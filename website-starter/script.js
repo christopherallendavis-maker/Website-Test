@@ -1,7 +1,7 @@
-const helloBtn = document.getElementById('helloBtn');
+const startBtn = document.getElementById('startBtn');
 
-if (helloBtn) {
-  helloBtn.addEventListener('click', () => {
-    alert('Your website starter is working.');
+if (startBtn) {
+  startBtn.addEventListener('click', () => {
+    alert('Thank you. A consulting advisor will follow up shortly.');
   });
 }

@@ -3,33 +3,67 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My New Website</title>
-    <meta name="description" content="A clean starter website." />
+    <title>Northbridge Consulting</title>
+    <meta name="description" content="Corporate landing page starter template." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <header class="site-header">
-      <div class="container">
-        <h1>My New Website</h1>
-        <p>Simple starter template you can build on.</p>
-      </div>
+    <header class="site-header container">
+      <a class="brand" href="#">Northbridge Consulting</a>
+      <a class="ghost-link" href="#features">Capabilities</a>
     </header>
 
     <main class="container">
-      <section class="card">
-        <h2>Getting Started</h2>
-        <ul>
-          <li>Edit <code>index.html</code> for structure</li>
-          <li>Edit <code>styles.css</code> for design</li>
-          <li>Edit <code>script.js</code> for behavior</li>
-        </ul>
-        <button id="helloBtn">Click me</button>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Enterprise Advisory</p>
+          <h1>Strategic guidance for complex business decisions.</h1>
+          <p class="hero-copy">
+            We help leadership teams align operations, financial planning, and
+            technology strategy to deliver measurable outcomes.
+          </p>
+          <div class="hero-actions">
+            <button id="startBtn">Request Consultation</button>
+            <a class="text-link" href="#features">View capabilities</a>
+          </div>
+        </div>
+
+        <aside class="hero-panel">
+          <h2>Core Services</h2>
+          <ul>
+            <li>Operational performance assessment</li>
+            <li>Financial and growth planning</li>
+            <li>Technology program governance</li>
+          </ul>
+        </aside>
+      </section>
+
+      <section id="features" class="feature-grid">
+        <article class="feature">
+          <h3>Operational Excellence</h3>
+          <p>Reduce process inefficiency and improve execution across teams.</p>
+        </article>
+        <article class="feature">
+          <h3>Financial Strategy</h3>
+          <p>Strengthen forecasts, cash planning, and portfolio prioritization.</p>
+        </article>
+        <article class="feature">
+          <h3>Digital Transformation</h3>
+          <p>Deliver modernization initiatives with clear governance and control.</p>
+        </article>
       </section>
     </main>
 
     <footer class="site-footer">
-      <div class="container">
-        <small>&copy; 2026 Your Name</small>
+      <div class="container footer-content">
+        <small>&copy; 2026 Northbridge Consulting</small>
+        <a class="text-link" href="#">Back to top</a>
       </div>
     </footer>
 
