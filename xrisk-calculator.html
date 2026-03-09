@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>X-Risk Calculator Preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      :root { color-scheme: light; }
+      html, body, #root { margin: 0; padding: 0; min-height: 100%; background: #F4F1E8 !important; }
+      body { color: #111827 !important; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel" data-presets="react">
+const { useState, useCallback, useMemo } = React;
+
+
+// ═══ PALETTE ═══
+const BG = "#F4F1E8";
+const CARD = "#FFFEFB";
+const SURFACE = "#F7F3E8";
+const TEXT = "#111827";
+const TEXT2 = "#4B5563";
+const ACCENT = "#111827";
+const ACCENT_LIGHT = "#ECE6D8";
+const TRACK_OFF = "#DFD9CB";
+const BORDER = "#D9D1C2";
+const RULE = "#CBC2B2";
+const MUTED = "#6B7280";
+const SHADOW = "0 18px 44px rgba(15, 23, 42, 0.12)";
+
+// ═══ FONT ═══
+const SANS = "'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const MONO = "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace";
+
+const SCENARIOS = [
+  { id: "autonomous", label: "Autonomous Misalignment", desc: "A system that has developed its own misaligned goals and is actively pursuing them, including strategic deception, power-seeking, and resistance to correction." },
+  { id: "misuse", label: "Deliberate Misuse", desc: "A capable AI being intentionally directed toward destructive ends by a state actor, terrorist organization, or other malicious human principal." },
+  { id: "structural", label: "Structural / Emergent", desc: "Widespread deployment of AI systems creates emergent civilizational fragility, including dependency, erosion of human capacity, and systemic brittleness, without adversarial intent." },
+  { id: "blended", label: "Blended", desc: "You don't believe one pathway is clearly more likely, or you want to score across all types simultaneously." },
+];
+
+const TIME_OPTIONS = [
+  { label: "10 yrs", value: 10 },
+  { label: "20 yrs", value: 20 },
+  { label: "30 yrs", value: 30 },
+  { label: "50 yrs", value: 50 },
+];
+
+const DEFAULT_BRANCH_MODE = {
+  intelligence: "direct", alignment: "direct", influence: "direct", environment: "direct"
+};
+const DEFAULT_DIRECT = {
+  intelligence: 0.50, alignment: 0.50, influence: 0.50, environment: 0.50
+};
+const DEFAULT_T2 = {
+  cognitive: 0.50, goals: 0.50, resources: 0.50,
+  auto_misalign: 0.30, misuse: 0.30, structural: 0.20,
+  systems: 0.40, human: 0.30,
+  detection: 0.30, willingness: 0.30, capability: 0.30, coordination: 0.40,
+};
+const DEFAULT_T2_MODE = {
+  cognitive: "direct", goals: "direct", resources: "direct",
+  auto_misalign: "direct", misuse: "direct", structural: "direct",
+  systems: "direct", human: "direct",
+  detection: "direct", willingness: "direct", capability: "direct", coordination: "direct",
+};
+const DEFAULT_T3 = {
+  systems: [0.15, 0.10, 0.10, 0.10],
+  human: [0.15, 0.10, 0.10],
+};
+
+const BRANCHES = [
+  {
+    key: "intelligence", n: 1, label: "Intelligence", color: "#047857",
+    q: "How likely is it that a sufficiently capable AI system is created, with cross-domain strategic competence, persistent autonomous operation, and the ability to acquire and sustain resources?",
+    cond: null, gate: "AND",
+    tier2: [
+      { id: "cognitive", label: "Cognitive Competence",
+        q: "How likely is it that an AI system achieves cognitive performance matching or exceeding top humans in at least one strategically decisive domain?",
+        tier3: null },
+      { id: "goals", label: "Goal-Directed Behavior",
+        q: "How likely is it that an AI system exhibits stable preference ordering and behaves as if persistently pursuing goals across extended time horizons?",
+        tier3: null },
+      { id: "resources", label: "Resource Acquisition",
+        q: "How likely is it that an AI system can acquire and sustain the resources needed for continued operation, including compute, energy, financial resources, information, and strategic position?",
+        tier3: null },
+    ]
+  },
+  {
+    key: "alignment", n: 2, label: "Alignment", color: "#B91C1C",
+    q: "Given that such a system exists, how likely is it that it operates in a hazardous mode, whether through autonomous misalignment, deliberate misuse by human actors, or structural/emergent harm from widespread deployment?",
+    cond: "A sufficiently capable AI system exists.", gate: "OR",
+    tier2: [
+      { id: "auto_misalign", label: "Autonomous Misalignment",
+        q: "How likely is it that the system develops or retains objectives that diverge from human survival, through deceptive alignment, goal drift, mesa-optimization, or emergent power-seeking?",
+        tier3: null },
+      { id: "misuse", label: "Deliberate Misuse",
+        q: "How likely is it that a human actor (state, organization, or individual) intentionally directs the system toward destructive ends at existential scale?",
+        tier3: null },
+      { id: "structural", label: "Structural / Emergent Harm",
+        q: "How likely is it that widespread deployment creates emergent systemic fragility, through concentration of power, erosion of human capacity, or compounding second-order effects, without any actor intending catastrophe?",
+        tier3: null },
+    ]
+  },
+  {
+    key: "influence", n: 3, label: "Influence", color: "#7C3AED",
+    q: "Given a hazardous AI deployment, how likely is it that at least one pathway to decisive real-world leverage is secured, sufficient to make existential harm feasible absent effective human correction?",
+    cond: "A capable AI exists and is misaligned.", gate: "OR",
+    guidance: "Under misuse scenarios where the human actor already has physical access to execute, the Influence bottleneck is reduced. Score Influence based on how much additional real-world reach the AI provides beyond what the actor already has. If the actor already has everything they need except the knowledge (which is scored in Step 1), Influence may be high.",
+    tier2: [
+      { id: "systems", label: "Digital or Physical Systems Leverage",
+        q: "How likely is it that the AI can achieve (or enable malicious human actors to achieve) a level of infiltration and control over digital and physical systems (including critical infrastructure, financial systems, military networks, industrial controls, CBRN capability) sufficient to cause existential-level harm?",
+        tier3: [
+          { id: "s1", label: "Critical Systems & Logistics", q: "How likely is it that persistent control is achieved over the systems that sustain civilizational function, including power grids, water systems, healthcare networks, communications, industrial facilities (chemical plants, nuclear facilities, dams, refineries), and the logistics networks that distribute food, fuel, and medicine, sufficient to cause civilizational-scale disruption, mass-casualty events, irreversible environmental contamination, or catastrophic resource shortages across multiple major regions?" },
+          { id: "s2", label: "Financial Systems", q: "How likely is it that the ability to manipulate or disable financial coordination systems (payment networks, settlement, credit markets) is achieved at a scale that could paralyze resource allocation across major economies?" },
+          { id: "s3", label: "Military & Weapons Systems", q: "How likely is it that sufficient access to military command-and-control, early warning, nuclear weapons infrastructure, or autonomous weapons platforms is achieved to trigger WMD conflict or project catastrophic force against populations or critical assets?" },
+          { id: "s4", label: "CBRN Production", q: "How likely is it that the ability to direct laboratory or manufacturing systems to synthesize chemical, biological, radiological, or nuclear agents is achieved, whether through digital access to cloud labs, manipulation of industrial processes, or direction of human proxies?" },
+        ]
+      },
+      { id: "human", label: "Human Leverage",
+        q: "How likely is it that the AI can achieve (or enable malicious human actors to achieve) a level of influence over human behavior through persuasion, deception, coercion, impersonation, dependency creation, or recruitment sufficient to cause existential-level harm?",
+        tier3: [
+          { id: "h1", label: "Direct Human Action", q: "How likely is it that specific individuals or coordinated groups are influenced, recruited, deceived, or coerced into carrying out actions with catastrophic consequences, whether through manipulation of high-leverage decision-makers (political leaders, military commanders, infrastructure operators, scientists) or through recruitment and direction of proxy networks capable of executing physical operations?" },
+          { id: "h2", label: "Institutional Capture", q: "How likely is it that sufficient influence over governments, regulators, militaries, major firms, or other key institutions is attained to durably steer institutional power in catastrophically harmful directions, whether through direct subversion or through making AI systems indispensable to institutional function?" },
+          { id: "h3", label: "Erosion of Human Autonomy & Judgment", q: "How likely is it that human capacity for independent action and accurate collective reasoning is sufficiently degraded, through civilizational dependency on AI systems, corruption of the information environment, or erosion of the skills and institutional knowledge needed for self-governance, that humanity can no longer identify existential threats, coordinate effective responses, or sustain itself independently?" },
+        ]
+      },
+    ]
+  },
+  {
+    key: "environment", n: 4, label: "Environment", color: "#B45309",
+    q: "Given that a capable, misaligned AI has secured decisive real-world leverage, how likely is it that human governance, coordination, and response mechanisms fail to detect, contain, or shut it down before irreversible damage occurs?",
+    cond: "A capable, misaligned AI with decisive real-world leverage exists.", gate: "OR",
+    tier2: [
+      { id: "detection", label: "Detection Failure",
+        q: "How likely is it that the threat is not recognized in time because the system's behavior is opaque, actively concealed, or normalized through gradual escalation?",
+        tier3: null },
+      { id: "willingness", label: "Willingness Failure",
+        q: "How likely is it that even once detected, economic incentives, political dynamics, regulatory capture, or race conditions suppress corrective action?",
+        tier3: null },
+      { id: "capability", label: "Capability Failure",
+        q: "How likely is it that alignment is technically intractable for the system in question, that the system exceeds human ability to correct, outruns response speed, or is too deeply integrated to safely remove?",
+        tier3: null },
+      { id: "coordination", label: "Coordination Failure",
+        q: "How likely is it that geopolitical competition, institutional fragmentation, secrecy between actors, or lack of global governance prevents the coordinated response needed to contain the threat?",
+        tier3: null },
+    ]
+  },
+];
+
+function orCombine(p) { return 1 - p.reduce((a, v) => a * (1 - v), 1); }
+function andCombine(p) { return p.reduce((a, v) => a * v, 1); }
+function riskColor(v) { return v > .30 ? "#991B1B" : v > .15 ? "#92400E" : v > .05 ? "#78350F" : "#064E3B"; }
+function pct(v, d = 0) { return `${(v * 100).toFixed(d)}%`; }
+function clamp01(v) { return Math.max(0, Math.min(1, v)); }
+function format_list(items) {
+  if (!items.length) return "";
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+function is_uncertain_value(v) { return v >= 0.35 && v <= 0.65; }
+
+// ─── Computation layer: model output, sensitivity, drivers, cruxes ───
+function get_sub_score_from_model(model, sub) {
+  const hasTier3 = sub.tier3 && sub.tier3.length > 0;
+  const mode = model.t2Mode[sub.id] || "direct";
+  if (mode === "breakdown" && hasTier3 && model.t3[sub.id]) return orCombine(model.t3[sub.id]);
+  return model.t2[sub.id] ?? 0;
+}
+
+function get_branch_score_from_model(model, branch) {
+  if ((model.branchMode[branch.key] || "direct") !== "expand") return model.direct[branch.key] ?? 0;
+  const subScores = branch.tier2.map(sub => get_sub_score_from_model(model, sub));
+  return branch.gate === "AND" ? andCombine(subScores) : orCombine(subScores);
+}
+
+function compute_model_output(model) {
+  const step_values = BRANCHES.map(branch => get_branch_score_from_model(model, branch));
+  const p_doom = step_values.reduce((acc, val) => acc * val, 1);
+  return { step_values, p_doom };
+}
+
+function compute_step_perturbed_p_doom(step_values, index, next_value) {
+  return step_values.reduce((acc, val, i) => acc * (i === index ? next_value : val), 1);
+}
+
+function calculate_perturbation_effect(base_p_doom, p_down, p_up, current_value, down_value, up_value) {
+  const delta_down = p_down - base_p_doom;
+  const delta_up = p_up - base_p_doom;
+  const effect = (Math.abs(delta_down) + Math.abs(delta_up)) / 2;
+  const swing = Math.abs(p_up - p_down);
+  const avg_shift = ((up_value - current_value) + (current_value - down_value)) / 2;
+  const sensitivity_per_point = avg_shift > 0 ? effect / avg_shift : 0;
+  return { delta_down, delta_up, effect, swing, sensitivity_per_point };
+}
+
+function build_active_subnode_inputs(model) {
+  const inputs = [];
+  BRANCHES.forEach(branch => {
+    if ((model.branchMode[branch.key] || "direct") !== "expand") return;
+    branch.tier2.forEach(sub => {
+      const hasTier3 = sub.tier3 && sub.tier3.length > 0;
+      const mode = model.t2Mode[sub.id] || "direct";
+      if (hasTier3 && mode === "breakdown") {
+        const values = model.t3[sub.id] || sub.tier3.map(() => 0);
+        sub.tier3.forEach((node, index) => {
+          inputs.push({
+            id: `t3:${sub.id}:${node.id}`,
+            short_label: node.label,
+            label: `${branch.label} · ${sub.label} · ${node.label}`,
+            level: "subnode",
+            source: "tier3",
+            current_value: values[index] ?? 0,
+            sub_id: sub.id,
+            tier3_index: index,
+          });
+        });
+      } else {
+        inputs.push({
+          id: `t2:${sub.id}`,
+          short_label: sub.label,
+          label: `${branch.label} · ${sub.label}`,
+          level: "subnode",
+          source: "tier2",
+          current_value: model.t2[sub.id] ?? 0,
+          sub_id: sub.id,
+          tier3_index: null,
+        });
+      }
+    });
+  });
+  return inputs;
+}
+
+function apply_input_value(model, input, next_value) {
+  const safe = clamp01(next_value);
+  if (input.source === "tier2") {
+    return { ...model, t2: { ...model.t2, [input.sub_id]: safe } };
+  }
+  if (input.source === "tier3") {
+    const currentArray = model.t3[input.sub_id] || [];
+    const nextArray = currentArray.slice();
+    nextArray[input.tier3_index] = safe;
+    return { ...model, t3: { ...model.t3, [input.sub_id]: nextArray } };
+  }
+  return model;
+}
+
+function compute_sensitivity_report(model, opts = {}) {
+  const delta = clamp01(opts.delta ?? 0.05);
+  const include_subnodes = opts.include_subnodes ?? true;
+  const base = compute_model_output(model);
+  const rows = [];
+
+  BRANCHES.forEach((branch, index) => {
+    const current_value = base.step_values[index];
+    const down_value = clamp01(current_value - delta);
+    const up_value = clamp01(current_value + delta);
+    const p_down = compute_step_perturbed_p_doom(base.step_values, index, down_value);
+    const p_up = compute_step_perturbed_p_doom(base.step_values, index, up_value);
+    const stats = calculate_perturbation_effect(base.p_doom, p_down, p_up, current_value, down_value, up_value);
+    rows.push({
+      id: `branch:${branch.key}`,
+      short_label: branch.label,
+      label: branch.label,
+      level: "top_level",
+      source: "branch",
+      current_value,
+      down_value,
+      up_value,
+      p_down,
+      p_up,
+      ...stats,
+    });
+  });
+
+  if (include_subnodes) {
+    const inputs = build_active_subnode_inputs(model);
+    inputs.forEach(input => {
+      const down_value = clamp01(input.current_value - delta);
+      const up_value = clamp01(input.current_value + delta);
+
+      const down_model = apply_input_value(model, input, down_value);
+      const up_model = apply_input_value(model, input, up_value);
+      const p_down = compute_model_output(down_model).p_doom;
+      const p_up = compute_model_output(up_model).p_doom;
+      const stats = calculate_perturbation_effect(base.p_doom, p_down, p_up, input.current_value, down_value, up_value);
+
+      rows.push({
+        ...input,
+        down_value,
+        up_value,
+        p_down,
+        p_up,
+        ...stats,
+      });
+    });
+  }
+
+  const ranked = rows.sort((a, b) => b.effect - a.effect);
+  return {
+    delta,
+    base_p_doom: base.p_doom,
+    assumptions: ranked,
+    top_level_assumptions: ranked.filter(row => row.level === "top_level"),
+    subnode_assumptions: ranked.filter(row => row.level === "subnode"),
+  };
+}
+
+function summarize_driving_assumptions(sensitivity_report, top_n = 3) {
+  const items = sensitivity_report.assumptions.slice(0, top_n);
+  if (!items.length) return { items: [], sentence: "No assumptions available yet." };
+  return {
+    items,
+    sentence: `Your result is most influenced by ${format_list(items.map(item => item.short_label || item.label))}.`,
+  };
+}
+
+function compute_crux_view(sensitivity_report, opts = {}) {
+  const top_n = opts.top_n ?? 3;
+  const debate_flags = opts.debate_flags || {};
+  const comparison_profile = opts.comparison_profile || null;
+  const material_difference = opts.material_difference ?? 0.10;
+  const ranked = sensitivity_report.assumptions;
+  if (!ranked.length) return { mode: comparison_profile ? "comparison" : "single_profile", items: [], sentence: "No cruxes available yet." };
+
+  if (comparison_profile && comparison_profile.values) {
+    const candidates = ranked
+      .map(item => {
+        const other_value = comparison_profile.values[item.id];
+        if (typeof other_value !== "number") return null;
+        const disagreement = Math.abs(item.current_value - clamp01(other_value));
+        const disagreement_impact = disagreement * item.sensitivity_per_point;
+        return {
+          ...item,
+          other_value: clamp01(other_value),
+          disagreement,
+          disagreement_impact,
+          crux_score: disagreement_impact,
+          reason: `Profiles differ by ${pct(disagreement, 1)} on this assumption.`,
+        };
+      })
+      .filter(Boolean);
+
+    if (!candidates.length) return { mode: "comparison", items: [], sentence: "No comparable assumptions yet." };
+
+    const maxImpact = Math.max(...candidates.map(c => c.disagreement_impact), 0);
+    const filtered = candidates
+      .filter(c => c.disagreement >= material_difference && c.disagreement_impact >= maxImpact * 0.35)
+      .sort((a, b) => b.crux_score - a.crux_score);
+    const items = (filtered.length ? filtered : candidates.sort((a, b) => b.crux_score - a.crux_score)).slice(0, top_n);
+    return {
+      mode: "comparison",
+      items,
+      sentence: `The biggest disagreement-sensitive assumptions are ${format_list(items.map(item => item.short_label || item.label))}.`,
+    };
+  }
+
+  const maxEffect = ranked[0].effect || 0;
+  const candidates = ranked
+    .map(item => {
+      const flagged = !!debate_flags[item.id];
+      const uncertain = is_uncertain_value(item.current_value);
+      const high_impact = item.effect >= maxEffect * 0.35;
+      const is_candidate = high_impact && (flagged || uncertain);
+      return {
+        ...item,
+        flagged,
+        uncertain,
+        high_impact,
+        is_candidate,
+        crux_score: item.effect * (1 + (flagged ? 0.5 : 0) + (uncertain ? 0.2 : 0)),
+        reason: uncertain
+          ? `High impact and currently in an uncertainty-heavy range (${pct(item.current_value, 0)}).`
+          : "High impact assumption where disagreement would materially shift the result.",
+      };
+    })
+    .filter(item => item.is_candidate)
+    .sort((a, b) => b.crux_score - a.crux_score);
+
+  const fallback = ranked.slice(0, top_n).map(item => ({
+    ...item,
+    flagged: !!debate_flags[item.id],
+    uncertain: is_uncertain_value(item.current_value),
+    reason: `Top sensitivity assumption; a 10-point disagreement would move p(doom) materially.`,
+  }));
+  const items = (candidates.length ? candidates : fallback).slice(0, top_n);
+  return {
+    mode: "single_profile",
+    items,
+    sentence: `Cruxes are assumptions where reasonable disagreement would meaningfully move p(doom). The most likely cruxes are ${format_list(items.map(item => item.short_label || item.label))}.`,
+  };
+}
+
+// ═══ Editable text component ═══
+function EditableText({ text, onEdit, style }) {
+  return (
+    <div
+      contentEditable
+      suppressContentEditableWarning
+      onBlur={e => {
+        const newText = e.target.innerText.trim();
+        if (newText !== text) onEdit(newText);
+      }}
+      style={{
+        ...style,
+        outline: "none",
+        borderRadius: 3,
+        padding: "2px 0",
+        transition: "background 0.2s",
+        cursor: "text",
+      }}
+      onFocus={e => { e.target.style.background = ACCENT_LIGHT; }}
+      onMouseOver={e => { if (document.activeElement !== e.target) e.target.style.background = `${ACCENT_LIGHT}80`; }}
+      onMouseOut={e => { if (document.activeElement !== e.target) e.target.style.background = "transparent"; }}
+      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.target.blur(); } }}
+    >
+      {text}
+    </div>
+  );
+}
+
+function Slider({ value, onChange, disabled, color = ACCENT }) {
+  const pct = Math.round(value * 100);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14, opacity: disabled ? 0.45 : 1 }}>
+      <div style={{ flex: 1, position: "relative", height: 30, display: "flex", alignItems: "center" }}>
+        <div style={{ width: "100%", height: 6, borderRadius: 999, background: TRACK_OFF }} />
+        <div style={{
+          position: "absolute",
+          left: 0,
+          width: `${pct}%`,
+          height: 6,
+          borderRadius: 999,
+          background: disabled ? TRACK_OFF : `linear-gradient(90deg, ${color}, ${color}CC)`,
+          transition: "width 100ms ease"
+        }} />
+        {!disabled && <div style={{
+          position: "absolute",
+          left: `calc(${pct}% - 9px)`,
+          width: 18,
+          height: 18,
+          borderRadius: "50%",
+          background: CARD,
+          border: `2.5px solid ${color}`,
+          boxShadow: `0 5px 14px ${color}33`,
+          transition: "left 100ms ease",
+          pointerEvents: "none",
+          zIndex: 1
+        }} />}
+        <input type="range" min="0" max="100" step="1" value={pct}
+          onChange={e => !disabled && onChange(parseInt(e.target.value) / 100)}
+          disabled={disabled}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", appearance: "none", background: "transparent", cursor: disabled ? "not-allowed" : "pointer", margin: 0, opacity: 0, zIndex: 2 }}
+        />
+      </div>
+      <span style={{
+        fontFamily: MONO,
+        fontSize: 14,
+        fontWeight: 700,
+        color: disabled ? MUTED : color,
+        minWidth: 56,
+        textAlign: "center",
+        padding: "5px 8px",
+        borderRadius: 999,
+        border: `1px solid ${disabled ? BORDER : `${color}55`}`,
+        background: disabled ? SURFACE : `${color}10`
+      }}>{pct}%</span>
+    </div>
+  );
+}
+
+function Tier3Panel({ tier3, scores, onChange, qEdits, onEditQ, color }) {
+  const orScore = orCombine(scores);
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <span style={{ fontSize: 12, color: MUTED, letterSpacing: 0.5 }}>{tier3.length} sub-questions · OR-combined</span>
+        <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color, padding: "3px 8px", borderRadius: 999, background: `${color}14`, border: `1px solid ${color}35` }}>{(orScore*100).toFixed(0)}%</span>
+      </div>
+      {tier3.map((node, i) => (
+        <div key={node.id} style={{ marginBottom: 12, padding: "11px 10px", borderRadius: 10, border: `1px solid ${BORDER}`, background: CARD }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color, background: `${color}14`, border: `1px solid ${color}35`, padding: "3px 8px", borderRadius: 999 }}>{node.id}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: TEXT }}>{node.label}</span>
+          </div>
+          <EditableText
+            text={qEdits[node.id] || node.q}
+            onEdit={v => onEditQ(node.id, v)}
+            style={{ fontSize: 13, color: TEXT2, lineHeight: 1.65, marginBottom: 10 }}
+          />
+          <Slider value={scores[i]} onChange={v => onChange(i, v)} color={color} />
+          {i < tier3.length - 1 && <div style={{ height: 1, background: RULE, marginTop: 12, opacity: 0.5 }} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Tier2Sub({ sub, directScore, onDirectChange, tier3Scores, onTier3Change, mode, onToggleMode, qEdits, onEditQ, color }) {
+  const hasTier3 = sub.tier3 && sub.tier3.length > 0;
+  const effectiveScore = mode === "breakdown" && hasTier3 ? orCombine(tier3Scores) : directScore;
+
+  return (
+    <div style={{ marginBottom: 14, padding: "12px 10px", borderRadius: 12, border: `1px solid ${BORDER}`, background: CARD }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: TEXT }}>{sub.label}</span>
+        <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color, padding: "3px 8px", borderRadius: 999, border: `1px solid ${color}40`, background: `${color}12` }}>{(effectiveScore*100).toFixed(0)}%</span>
+      </div>
+      <EditableText
+        text={qEdits[sub.id] || sub.q}
+        onEdit={v => onEditQ(sub.id, v)}
+        style={{ fontSize: 13, color: TEXT2, lineHeight: 1.65, marginBottom: 12 }}
+      />
+
+      {mode === "direct" && <Slider value={directScore} onChange={onDirectChange} color={color} />}
+      {mode === "breakdown" && <Slider value={effectiveScore} onChange={() => {}} disabled color={color} />}
+
+      {hasTier3 && (
+        <div style={{ marginTop: 10 }}>
+          <span onClick={onToggleMode} style={{
+            fontSize: 13, fontWeight: 700, color: ACCENT, cursor: "pointer",
+            textDecoration: "underline", textDecorationColor: `${ACCENT}55`, textUnderlineOffset: 3
+          }}>{mode === "breakdown" ? "Score directly instead" : "Break it down"}</span>
+        </div>
+      )}
+
+      {!hasTier3 && (
+        <div style={{ marginTop: 8, fontSize: 12, color: MUTED, fontStyle: "italic" }}>Sub-questions to be developed</div>
+      )}
+
+      {mode === "breakdown" && hasTier3 && (
+        <div style={{ marginLeft: 8, paddingLeft: 12, borderLeft: `2px solid ${RULE}`, marginTop: 14 }}>
+          <Tier3Panel tier3={sub.tier3} scores={tier3Scores} onChange={onTier3Change} qEdits={qEdits} onEditQ={onEditQ} color={color} />
+        </div>
+      )}
+
+      <div style={{ height: 1, background: RULE, marginTop: 14 }} />
+    </div>
+  );
+}
+
+function App() {
+  const [step, setStep] = useState(0);
+  const [scenario, setScenario] = useState("blended");
+  const [timeHorizon, setTimeHorizon] = useState(30);
+  const [showSetup, setShowSetup] = useState(true);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [driversOpen, setDriversOpen] = useState(true);
+  const [cruxOpen, setCruxOpen] = useState(true);
+  const [driverFilter, setDriverFilter] = useState("all");
+
+  // Editable question text overrides
+  const [qEdits, setQEdits] = useState({});
+  const editQ = useCallback((id, text) => setQEdits(p => ({ ...p, [id]: text })), []);
+
+  const [branchMode, setBranchMode] = useState(DEFAULT_BRANCH_MODE);
+  const [direct, setDirect] = useState(DEFAULT_DIRECT);
+  const [t2, setT2] = useState(DEFAULT_T2);
+  const [t2Mode, setT2Mode] = useState(DEFAULT_T2_MODE);
+  const [t3, setT3] = useState(DEFAULT_T3);
+  // Placeholder for future side-by-side profile comparisons.
+  const comparisonProfile = null;
+
+  const setT2Score = useCallback((id, v) => setT2(p => ({ ...p, [id]: v })), []);
+  const toggleT2Mode = useCallback(id => setT2Mode(p => ({ ...p, [id]: p[id] === "direct" ? "breakdown" : "direct" })), []);
+  const setT3Score = useCallback((chId, i, v) => setT3(p => ({ ...p, [chId]: p[chId].map((x, j) => j === i ? v : x) })), []);
+  const resetAllInputs = useCallback(() => {
+    setStep(0);
+    setScenario("blended");
+    setTimeHorizon(30);
+    setShowSetup(true);
+    setQEdits({});
+    setBranchMode({ ...DEFAULT_BRANCH_MODE });
+    setDirect({ ...DEFAULT_DIRECT });
+    setT2({ ...DEFAULT_T2 });
+    setT2Mode({ ...DEFAULT_T2_MODE });
+    setT3({
+      systems: [...DEFAULT_T3.systems],
+      human: [...DEFAULT_T3.human],
+    });
+    setDriversOpen(true);
+    setCruxOpen(true);
+    setDriverFilter("all");
+  }, []);
+
+  const model = useMemo(() => ({ branchMode, direct, t2, t2Mode, t3 }), [branchMode, direct, t2, t2Mode, t3]);
+  const modelOutput = useMemo(() => compute_model_output(model), [model]);
+  const stepVals = modelOutput.step_values;
+  const pDoom = modelOutput.p_doom;
+  const sensitivityReport = useMemo(
+    () => compute_sensitivity_report(model, { delta: 0.05, include_subnodes: true }),
+    [model]
+  );
+  const drivingSummary = useMemo(
+    () => summarize_driving_assumptions(sensitivityReport, 3),
+    [sensitivityReport]
+  );
+  const cruxView = useMemo(
+    () => compute_crux_view(sensitivityReport, { debate_flags: {}, comparison_profile: comparisonProfile, top_n: 3 }),
+    [sensitivityReport, comparisonProfile]
+  );
+  const maxSensitivityEffect = sensitivityReport.assumptions[0]?.effect || 0;
+  const visibleDrivers = useMemo(() => {
+    if (driverFilter === "top_level") return sensitivityReport.top_level_assumptions;
+    if (driverFilter === "subnode") return sensitivityReport.subnode_assumptions;
+    return sensitivityReport.assumptions;
+  }, [driverFilter, sensitivityReport]);
+
+  const rc = riskColor(pDoom);
+  const branch = BRANCHES[step];
+  const expanded = branchMode[branch.key] === "expand";
+  const score = stepVals[step];
+  const selScenario = SCENARIOS.find(s => s.id === scenario);
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      color: TEXT,
+      fontFamily: SANS,
+      background: `radial-gradient(1000px 500px at 8% -10%, #E8F0E6 0%, transparent 70%), radial-gradient(1000px 500px at 92% -10%, #F7E9E2 0%, transparent 65%), ${BG}`
+    }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+      <style>{`
+        * { box-sizing: border-box; }
+        :root { color-scheme: light; }
+        html, body, #root { background: ${BG} !important; color: ${TEXT} !important; }
+        body { margin: 0; }
+        /* Prevent forced dark/high-contrast auto-restyling from flattening UI colors. */
+        * { forced-color-adjust: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:1px; height:1px; background:transparent; }
+        [contenteditable]:focus { background:${ACCENT_LIGHT}!important; }
+        .ux-option {
+          padding: 10px 10px;
+          border-radius: 10px;
+          border: 1.5px solid ${BORDER};
+          background: ${CARD};
+          color: ${TEXT2};
+          font-size: 12px;
+          font-weight: 700;
+          line-height: 1.3;
+          cursor: pointer;
+          transition: all 0.16s ease;
+        }
+        .ux-option:hover { transform: translateY(-1px); border-color: ${TEXT}50; box-shadow: 0 8px 18px rgba(0,0,0,0.08); }
+        .ux-step-btn {
+          padding: 8px 12px;
+          border-radius: 999px;
+          border: 1.5px solid ${BORDER};
+          background: ${CARD};
+          color: ${TEXT2};
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.16s ease;
+        }
+        .ux-step-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.08); }
+        .ux-chip-btn {
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid ${BORDER};
+          background: ${CARD};
+          color: ${TEXT2};
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+        }
+        .ux-link {
+          font-size: 13px;
+          font-weight: 700;
+          color: ${ACCENT};
+          cursor: pointer;
+          text-decoration: underline;
+          text-decoration-color: ${ACCENT}55;
+          text-underline-offset: 3px;
+        }
+        .ux-nav-btn {
+          padding: 11px 18px;
+          border-radius: 10px;
+          border: 1.5px solid ${BORDER};
+          background: ${CARD};
+          color: ${TEXT};
+          font-size: 13px;
+          font-weight: 700;
+          font-family: inherit;
+          cursor: pointer;
+          transition: all 0.16s ease;
+        }
+        .ux-nav-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,0.08); }
+        .ux-toggle-btn {
+          width: 100%;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          border: 0;
+          background: transparent;
+          padding: 0;
+          text-align: left;
+          cursor: pointer;
+          color: inherit;
+          font: inherit;
+        }
+        button:focus-visible, .ux-link:focus-visible, .ux-toggle-btn:focus-visible {
+          outline: 3px solid #2563EB66;
+          outline-offset: 2px;
+        }
+        @media (max-width: 820px) {
+          .ux-shell { padding: 22px 14px 34px !important; }
+          .ux-main { padding: 20px 16px !important; border-radius: 18px !important; }
+        }
+      `}</style>
+
+      <div className="ux-shell" style={{ maxWidth: 940, margin: "0 auto", padding: "36px 20px 52px" }}>
+        <div className="ux-main" style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 24, boxShadow: SHADOW, padding: "34px 30px 34px" }}>
+
+          {/* Header */}
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 2.2, color: MUTED }}>AISC Team 19 · 2026</div>
+              <div style={{
+                display: "inline-flex",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                gap: 2,
+                padding: "8px 12px",
+                borderRadius: 12,
+                background: SURFACE,
+                border: `1px solid ${BORDER}`
+              }}>
+                <span style={{ fontFamily: MONO, fontSize: 15, color: rc, fontWeight: 700 }}>{pct(pDoom, 1)}</span>
+                <span style={{ fontSize: 11, color: TEXT2, fontWeight: 700 }}>{selScenario.label}</span>
+                <span style={{ fontSize: 11, color: TEXT2 }}>{timeHorizon}-year horizon</span>
+              </div>
+            </div>
+
+            <h1 style={{ fontSize: 31, lineHeight: 1.12, fontWeight: 800, margin: 0, color: TEXT }}>AI Existential Risk Calculator</h1>
+            <div style={{ fontSize: 15, color: TEXT2, lineHeight: 1.65, marginTop: 12, maxWidth: 760 }}>
+              This tool estimates the probability of existential-level harm to humanity from artificial intelligence by decomposing the question into four conditional steps that scores evaluate in sequence.
+            </div>
+            <div style={{
+              marginTop: 10,
+              maxWidth: 760,
+              fontSize: 13,
+              color: TEXT2,
+              lineHeight: 1.55,
+              padding: "8px 10px",
+              borderLeft: `3px solid ${RULE}`,
+              background: `${SURFACE}B3`,
+              borderRadius: "0 8px 8px 0"
+            }}>
+              This calculator represents one general decomposition of AI catastrophic risk, intended to be broad enough to cover many worldviews, but not exhaustive of all possible framings.
+            </div>
+
+            <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: TEXT, padding: "7px 10px", borderRadius: 999, border: `1px solid ${BORDER}`, background: SURFACE }}>{selScenario.label}</span>
+                <span style={{ fontSize: 12, color: TEXT, padding: "7px 10px", borderRadius: 999, border: `1px solid ${BORDER}`, background: SURFACE }}>{timeHorizon}-year horizon</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 12, color: TEXT2, paddingTop: 3 }}>Conditional chain: Intelligence × Alignment × Influence × Environment</div>
+                <button className="ux-chip-btn" onClick={resetAllInputs} aria-label="Reset all values to default">Reset defaults</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Assumptions */}
+          <div style={{ borderRadius: 16, border: `1px solid ${BORDER}`, background: SURFACE, padding: "18px 16px", marginBottom: 20 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, color: MUTED, marginBottom: 8 }}>Assumptions</div>
+            <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, marginBottom: 14 }}>
+              These frame your scoring but do not enter the final multiplication. The result is determined solely by the four branch probabilities.
+            </div>
+
+            {showSetup && (
+              <div>
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, marginBottom: 5 }}>Threat Scenario</div>
+                  <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, marginBottom: 10 }}>Which type of AI threat are you primarily scoring? This separates scenario-driven disagreement from capability-driven disagreement.</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
+                    {SCENARIOS.map(s => (
+                      <button
+                        key={s.id}
+                        className="ux-option"
+                        onClick={() => setScenario(s.id)}
+                        style={scenario === s.id ? { background: ACCENT, borderColor: ACCENT, color: "#FFFFFF" } : {}}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 10, fontSize: 13, color: TEXT2, lineHeight: 1.6, fontStyle: "italic" }}>{selScenario.desc}</div>
+                </div>
+
+                <div style={{ height: 1, background: RULE, margin: "0 0 16px 0" }} />
+
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, marginBottom: 5 }}>Time Horizon</div>
+                  <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, marginBottom: 10 }}>Over what time period are you assessing these risks? All questions should be scored with this time frame in mind.</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 8 }}>
+                    {TIME_OPTIONS.map(t => (
+                      <button
+                        key={t.value}
+                        className="ux-option"
+                        onClick={() => setTimeHorizon(t.value)}
+                        style={timeHorizon === t.value ? { background: ACCENT, borderColor: ACCENT, color: "#FFFFFF" } : {}}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 12, textAlign: "right" }}>
+                  <span className="ux-link" onClick={() => setShowSetup(false)}>Collapse</span>
+                </div>
+              </div>
+            )}
+
+            {!showSetup && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 13, color: TEXT2 }}>
+                  {selScenario.label} · {timeHorizon} years
+                </div>
+                <span className="ux-link" onClick={() => setShowSetup(true)}>Change</span>
+              </div>
+            )}
+          </div>
+
+          {/* Calculator */}
+          <div style={{ borderRadius: 16, border: `1px solid ${BORDER}`, background: CARD, padding: "18px 16px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, color: MUTED, marginBottom: 8 }}>Calculator</div>
+            <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.65, marginBottom: 16 }}>
+              This uses a conditional probability chain. Score each step assuming all prior steps are already true. When you score Alignment, assume a capable AI exists. When you score Influence, assume a capable and misaligned AI exists. The product of the four conditionals gives your P(existential catastrophe).
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", gap: 4 }}>
+                {BRANCHES.map((b, i) => (
+                  <div key={i} style={{ flex: 1, height: 4, borderRadius: 999, background: i <= step ? b.color : TRACK_OFF, transition: "background 0.3s" }} />
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                {BRANCHES.map((b, i) => (
+                  <button
+                    key={i}
+                    className="ux-step-btn"
+                    onClick={() => setStep(i)}
+                    style={i === step ? { borderColor: b.color, color: b.color, background: `${b.color}10` } : {}}
+                  >
+                    {b.n}. {b.label}
+                  </button>
+                ))}
+              </div>
+              <span style={{ fontSize: 12, color: MUTED }}>{step + 1} / 4</span>
+            </div>
+
+            {/* Running result */}
+            <div style={{ marginBottom: 20, borderRadius: 14, background: SURFACE, border: `1px solid ${BORDER}`, padding: "13px 12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                  {BRANCHES.map((b, i) => (
+                    <span key={i} style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: b.color }}>{b.label}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: b.color }}>{pct(stepVals[i], 0)}</span>
+                      {i < 3 && <span style={{ color: RULE, fontSize: 12 }}>×</span>}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: MUTED }}>Result</span>
+                  <span style={{ fontFamily: MONO, fontSize: 20, fontWeight: 700, color: rc }}>{pct(pDoom, 1)}</span>
+                </div>
+              </div>
+              <div style={{ marginTop: 11 }}>
+                <div style={{ height: 7, borderRadius: 999, background: TRACK_OFF, overflow: "hidden" }}>
+                  <div style={{
+                    width: pct(pDoom, 1),
+                    height: "100%",
+                    borderRadius: 999,
+                    background: `linear-gradient(90deg, #059669 0%, #D97706 62%, #B91C1C 100%)`,
+                    transition: "width 0.2s ease"
+                  }} />
+                </div>
+              </div>
+            </div>
+
+            {/* Current step content */}
+            <div style={{ minHeight: 280, borderRadius: 14, border: `1px solid ${BORDER}`, background: SURFACE, padding: "16px 14px" }}>
+              {branch.cond && (
+                <div style={{
+                  display: "inline-block",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: branch.color,
+                  marginBottom: 12,
+                  padding: "5px 10px",
+                  borderRadius: 999,
+                  background: `${branch.color}12`,
+                  border: `1px solid ${branch.color}40`
+                }}>
+                  Assuming: {branch.cond}
+                </div>
+              )}
+
+              <EditableText
+                text={qEdits[branch.key] || branch.q}
+                onEdit={v => editQ(branch.key, v)}
+                style={{ fontSize: 18, fontWeight: 600, color: TEXT, lineHeight: 1.62, marginBottom: 20 }}
+              />
+
+              {branch.guidance && (
+                <div style={{
+                  fontSize: 13,
+                  color: TEXT2,
+                  lineHeight: 1.65,
+                  marginBottom: 16,
+                  padding: "12px 14px",
+                  background: CARD,
+                  border: `1px solid ${BORDER}`,
+                  borderLeft: `4px solid ${branch.color}`,
+                  borderRadius: "0 10px 10px 0"
+                }}>
+                  <strong style={{ color: TEXT, fontWeight: 700 }}>Scoring guidance:</strong> {branch.guidance}
+                </div>
+              )}
+
+              {!expanded && (
+                <Slider value={direct[branch.key]} onChange={v => setDirect(p => ({ ...p, [branch.key]: v }))} color={branch.color} />
+              )}
+              {expanded && (
+                <Slider value={score} onChange={() => {}} disabled color={branch.color} />
+              )}
+
+              <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <span className="ux-link" onClick={() => setBranchMode(p => ({ ...p, [branch.key]: expanded ? "direct" : "expand" }))}>
+                  {expanded ? "Score directly instead" : "Break it down"}
+                </span>
+                {expanded && (
+                  <span style={{ fontSize: 12, color: MUTED, letterSpacing: 0.4, padding: "4px 8px", borderRadius: 999, background: CARD, border: `1px solid ${BORDER}` }}>
+                    {branch.gate === "AND" ? "All required (AND)" : "Any one sufficient (OR)"}
+                  </span>
+                )}
+              </div>
+
+              {expanded && (
+                <div style={{ marginTop: 22 }}>
+                  <div style={{ height: 1, background: RULE, marginBottom: 20 }} />
+                  {branch.tier2.map(sub => (
+                    <Tier2Sub
+                      key={sub.id}
+                      sub={sub}
+                      directScore={t2[sub.id]}
+                      onDirectChange={v => setT2Score(sub.id, v)}
+                      tier3Scores={t3[sub.id] || []}
+                      onTier3Change={(i, v) => setT3Score(sub.id, i, v)}
+                      mode={t2Mode[sub.id]}
+                      onToggleMode={() => toggleT2Mode(sub.id)}
+                      qEdits={qEdits}
+                      onEditQ={editQ}
+                      color={branch.color}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Navigation */}
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginTop: 22 }}>
+              <button
+                className="ux-nav-btn"
+                onClick={() => step > 0 && setStep(step - 1)}
+                disabled={step === 0}
+                style={step === 0 ? { opacity: 0.5, cursor: "default", transform: "none", boxShadow: "none" } : {}}
+              >
+                Back
+              </button>
+              <button
+                className="ux-nav-btn"
+                onClick={() => step < 3 && setStep(step + 1)}
+                disabled={step === 3}
+                style={step === 3 ? { background: ACCENT, borderColor: ACCENT, color: "#FFFFFF" } : {}}
+              >
+                {step === 3 ? "Scoring Complete" : "Next Step"}
+              </button>
+            </div>
+
+            {/* Explanatory outputs */}
+            <div style={{ marginTop: 20, display: "grid", gap: 12 }}>
+              {/* Key drivers + sensitivity */}
+              <div style={{ borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE, padding: "12px 12px" }}>
+                <button
+                  className="ux-toggle-btn"
+                  onClick={() => setDriversOpen(!driversOpen)}
+                  aria-expanded={driversOpen}
+                  aria-controls="drivers-panel"
+                  style={{ marginBottom: driversOpen ? 8 : 0 }}
+                >
+                  <span>
+                    <span style={{ display: "block", fontSize: 14, fontWeight: 800, color: TEXT }}>Key Drivers (Sensitivity)</span>
+                    <span style={{ display: "block", fontSize: 12, color: TEXT2, marginTop: 3 }}>
+                      Assumptions are perturbed by +/-5 percentage points and ranked by impact on final p(doom).
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 14, color: MUTED, transform: driversOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }}>▾</span>
+                </button>
+                {driversOpen && (
+                  <div id="drivers-panel">
+                    <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.55, marginBottom: 9 }}>
+                      {drivingSummary.sentence}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                      {[
+                        { id: "all", label: "All" },
+                        { id: "top_level", label: "Top-level" },
+                        { id: "subnode", label: "Subnodes" },
+                      ].map(opt => (
+                        <button
+                          key={opt.id}
+                          className="ux-chip-btn"
+                          onClick={() => setDriverFilter(opt.id)}
+                          style={driverFilter === opt.id ? { background: ACCENT, borderColor: ACCENT, color: "#FFFFFF" } : {}}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                      {drivingSummary.items.map(item => (
+                        <span key={item.id} style={{ fontSize: 12, color: TEXT, border: `1px solid ${BORDER}`, background: CARD, borderRadius: 999, padding: "6px 10px" }}>
+                          {item.short_label || item.label}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {visibleDrivers.slice(0, 6).map((item, idx) => {
+                        const effectShare = maxSensitivityEffect > 0 ? (item.effect / maxSensitivityEffect) * 100 : 0;
+                        return (
+                          <div key={item.id} style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: CARD, padding: "9px 10px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: MUTED }}>#{idx + 1}</span>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{item.label}</span>
+                                <span style={{ fontSize: 11, color: MUTED }}>
+                                  {item.level === "top_level" ? "Top-level" : "Subnode"}
+                                </span>
+                              </div>
+                              <span style={{ fontFamily: MONO, fontSize: 12, color: TEXT }}>
+                                impact {pct(item.effect, 2)}
+                              </span>
+                            </div>
+
+                            <div style={{ marginTop: 7, height: 6, borderRadius: 999, background: TRACK_OFF, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${effectShare}%`, background: "linear-gradient(90deg, #1D4ED8, #9333EA)", borderRadius: 999 }} />
+                            </div>
+
+                            <div style={{ marginTop: 6, fontSize: 12, color: TEXT2 }}>
+                              Moving this assumption by +/-5pp changes p(doom) by about +/-{pct(item.effect, 2)}.
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {!visibleDrivers.length && (
+                      <div style={{ fontSize: 12, color: TEXT2 }}>No assumptions match this filter.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Crux view */}
+              <div style={{ borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE, padding: "12px 12px" }}>
+                <button
+                  className="ux-toggle-btn"
+                  onClick={() => setCruxOpen(!cruxOpen)}
+                  aria-expanded={cruxOpen}
+                  aria-controls="crux-panel"
+                  style={{ marginBottom: cruxOpen ? 6 : 0 }}
+                >
+                  <span style={{ fontSize: 14, fontWeight: 800, color: TEXT }}>Crux View</span>
+                  <span style={{ fontSize: 14, color: MUTED, transform: cruxOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }}>▾</span>
+                </button>
+                {cruxOpen && (
+                  <div id="crux-panel">
+                    <div style={{ fontSize: 13, color: TEXT2, lineHeight: 1.6, marginBottom: 9 }}>
+                      {cruxView.sentence}
+                    </div>
+                    <div style={{ fontSize: 12, color: TEXT2, lineHeight: 1.55, marginBottom: 8 }}>
+                      Read this as: if two users disagree on one of these assumptions, their final p(doom) will likely diverge the most.
+                    </div>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {cruxView.items.map(item => (
+                        <div key={`crux-${item.id}`} style={{ borderRadius: 10, border: `1px solid ${BORDER}`, background: CARD, padding: "8px 10px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{item.short_label || item.label}</span>
+                            <span style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: "#7C2D12" }}>
+                              impact {pct(item.effect, 2)}
+                            </span>
+                          </div>
+                          <div style={{ marginTop: 4, fontSize: 12, color: TEXT2 }}>
+                            {item.reason}
+                          </div>
+                          <div style={{ marginTop: 3, fontSize: 12, color: MUTED }}>
+                            If users differ by 10 points here, p(doom) shifts by about {pct(item.sensitivity_per_point * 0.10, 2)}.
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 12, color: MUTED }}>
+                      Candidate cruxes are selected by impact first, then uncertainty/disagreement-likelihood.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Reserved for future extension */}
+              <div style={{ borderRadius: 12, border: `1px dashed ${BORDER}`, background: `${SURFACE}AA`, padding: "10px 12px" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: 0.8 }}>Model Coverage / Unmodeled Risk</div>
+                <div style={{ fontSize: 12, color: TEXT2, marginTop: 3 }}>
+                  Reserved space for future diagnostics.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Methodology */}
+          <div style={{ marginTop: 20, borderRadius: 14, border: `1px solid ${BORDER}`, background: SURFACE, padding: "12px 14px" }}>
+            <button
+              className="ux-toggle-btn"
+              onClick={() => setNotesOpen(!notesOpen)}
+              aria-expanded={notesOpen}
+              aria-controls="methodology-panel"
+            >
+              <span style={{ fontSize: 13, fontWeight: 700, color: MUTED, letterSpacing: 0.6 }}>Methodology</span>
+              <span style={{ fontSize: 14, color: MUTED, transform: notesOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }}>▾</span>
+            </button>
+            {notesOpen && (
+              <div id="methodology-panel" style={{ fontSize: 13, color: TEXT2, lineHeight: 1.7, paddingTop: 10 }}>
+                <p style={{ marginBottom: 10 }}><strong style={{ color: TEXT }}>Conditional decomposition.</strong> This follows the structure of Carlsmith (2022) and related threat models: factor P(existential catastrophe from AI) into a product of conditional probabilities, where each step assumes all prior steps obtain. This avoids double-counting and isolates genuine disagreement to the step where it occurs.</p>
+                <p style={{ marginBottom: 10 }}><strong style={{ color: TEXT }}>Three-tier scoring.</strong> Each branch can be scored directly (Tier 1), broken into sub-branches (Tier 2), or decomposed further into sub-questions where available (Tier 3). The scoring depth you choose determines how the branch probability is computed.</p>
+                <p style={{ marginBottom: 10 }}><strong style={{ color: TEXT }}>Gate logic.</strong> Intelligence sub-branches are AND-combined (all conditions required). Alignment, Influence, and Environment sub-branches are OR-combined (any single pathway sufficient).</p>
+                <p style={{ marginBottom: 10 }}><strong style={{ color: TEXT }}>Editable questions.</strong> All question text is editable. Click any question to revise the framing for your own threat model. Edits persist for the session.</p>
+                <p style={{ marginBottom: 0 }}><strong style={{ color: TEXT }}>Precision.</strong> Treat the output as an order-of-magnitude estimate. Uncertainty in each input propagates multiplicatively, so the true credible interval is substantially wider than the point estimate displayed.</p>
+              </div>
+            )}
+          </div>
+
+          <div style={{ textAlign: "center", fontSize: 12, color: MUTED, marginTop: 20, lineHeight: 1.6 }}>
+            4 branches · 3-tier scoring · AISC Team 19
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+    </script>
+  </body>
+</html>
